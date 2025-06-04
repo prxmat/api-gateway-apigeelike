@@ -1,0 +1,77 @@
+routes:
+  # Route simple avec rate limiting
+  - id: users-list
+    path: /api/users
+    method: GET
+    backend_url: http://backend:8080/api/users
+    rate_limit:
+      points: 10
+      duration: 60  # 10 requêtes par minute
+
+  # Route avec validation et transformation
+  - id: create-user
+    path: /api/users
+    method: POST
+    backend_url: http://backend:8080/api/users
+    input_validation:
+      type: object
+      required: ["name", "email"]
+      properties:
+        name:
+          type: string
+          minLength: 2
+        email:
+          type: string
+          format: email
+    input_transform: |
+      {
+        "user": {
+          "fullName": name,
+          "emailAddress": email,
+          "createdAt": $now()
+        }
+      }
+
+  # Route avec mock
+  - id: orders-list
+    path: /api/orders
+    method: GET
+    backend_url: http://backend:8080/api/orders
+    mock: true
+    mock_response:
+      orders:
+        - id: 1
+          status: "pending"
+          total: 99.99
+        - id: 2
+          status: "completed"
+          total: 149.99
+
+  # Route avec validation et rate limiting strict
+  - id: payment
+    path: /api/payments
+    method: POST
+    backend_url: http://backend:8080/api/payments
+    rate_limit:
+      points: 5
+      duration: 60  # 5 requêtes par minute
+    input_validation:
+      type: object
+      required: ["amount", "currency", "card"]
+      properties:
+        amount:
+          type: number
+          minimum: 0
+        currency:
+          type: string
+          enum: ["EUR", "USD"]
+        card:
+          type: object
+          required: ["number", "expiry"]
+          properties:
+            number:
+              type: string
+              pattern: "^[0-9]{16}$"
+            expiry:
+              type: string
+              pattern: "^(0[1-9]|1[0-2])/([0-9]{2})$" 
