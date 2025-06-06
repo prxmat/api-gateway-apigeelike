@@ -2,10 +2,40 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ValidationService } from './validation.service';
 import { RouteLoaderService } from '../route-loader/route-loader.service';
 import { BadRequestException } from '@nestjs/common';
+import Ajv from 'ajv';
 
 describe('ValidationService', () => {
   let service: ValidationService;
   let routeLoader: RouteLoaderService;
+  let ajvCompileSpy: jest.SpyInstance;
+
+  const mockRoutes = [
+    {
+      id: 'test-route',
+      path: '/test',
+      method: 'POST',
+      input: {
+        validate_schema: {
+          type: 'object',
+          required: ['name', 'age'],
+          properties: {
+            name: { type: 'string' },
+            age: { type: 'number' }
+          }
+        }
+      },
+      output: {
+        validate_schema: {
+          type: 'object',
+          required: ['fullName', 'years'],
+          properties: {
+            fullName: { type: 'string' },
+            years: { type: 'number' }
+          }
+        }
+      }
+    }
+  ];
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -14,42 +44,82 @@ describe('ValidationService', () => {
         {
           provide: RouteLoaderService,
           useValue: {
-            getRoutes: jest.fn().mockReturnValue([
-              {
-                path: '/api/users',
-                method: 'POST',
-                input_validation: {
-                  type: 'object',
-                  required: ['name', 'email'],
-                  properties: {
-                    name: { type: 'string', minLength: 2 },
-                    email: { type: 'string', format: 'email' },
-                  },
-                },
-                output: {
-                  validate_schema: {
-                    type: 'object',
-                    required: ['id', 'name', 'email'],
-                    properties: {
-                      id: { type: 'number' },
-                      name: { type: 'string' },
-                      email: { type: 'string', format: 'email' },
-                    },
-                  },
-                },
-              },
-            ]),
-          },
-        },
+            getRoutes: jest.fn().mockReturnValue(mockRoutes)
+          }
+        }
       ],
     }).compile();
 
     service = module.get<ValidationService>(ValidationService);
     routeLoader = module.get<RouteLoaderService>(RouteLoaderService);
+
+    // Créer un spy sur la méthode compile d'Ajv
+    const ajv = (service as any).ajv;
+    ajvCompileSpy = jest.spyOn(ajv, 'compile');
+  });
+
+  afterEach(() => {
+    ajvCompileSpy.mockRestore();
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it('should compile schemas on init', async () => {
+    await service.onModuleInit();
+    
+    const compiledSchema = service.getCompiledSchema('test-route');
+    expect(compiledSchema).toBeDefined();
+    expect(compiledSchema?.input).toBeDefined();
+    expect(compiledSchema?.output).toBeDefined();
+    
+    // Vérifier que compile n'a été appelé que deux fois (une pour input, une pour output)
+    expect(ajvCompileSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('should use precompiled schemas for validation', async () => {
+    await service.onModuleInit();
+    
+    // Réinitialiser le compteur d'appels
+    ajvCompileSpy.mockClear();
+    
+    const request = {
+      body: { name: 'John', age: 30 }
+    };
+    
+    await service.validateRequest(request, mockRoutes[0].input.validate_schema, 'test-route');
+    
+    // Vérifier que compile n'a pas été appelé à nouveau
+    expect(ajvCompileSpy).not.toHaveBeenCalled();
+  });
+
+  it('should fallback to runtime compilation if routeId not found', async () => {
+    const request = {
+      body: { name: 'John', age: 30 }
+    };
+    
+    await service.validateRequest(request, mockRoutes[0].input.validate_schema, 'non-existent-route');
+    
+    // Vérifier que compile a été appelé une fois
+    expect(ajvCompileSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('should handle both input and output validation', async () => {
+    await service.onModuleInit();
+    
+    // Réinitialiser le compteur d'appels
+    ajvCompileSpy.mockClear();
+    
+    const request = {
+      body: { name: 'John', age: 30 }
+    };
+    
+    await service.validateRequest(request, mockRoutes[0].input.validate_schema, 'test-route');
+    await service.validateResponse('/test', 'POST', { fullName: 'John', years: 30 });
+    
+    // Vérifier que compile n'a pas été appelé à nouveau
+    expect(ajvCompileSpy).not.toHaveBeenCalled();
   });
 
   describe('validateRequest', () => {

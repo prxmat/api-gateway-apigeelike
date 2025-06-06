@@ -1,17 +1,19 @@
 export interface LoadedRoute {
-  path: string;
+  id: string;
   method: string;
+  path: string;
   backend_url: string;
+  mock?: boolean;
+  mock_response?: any;
+  timeout?: number | string;
   rate_limit?: {
     points: number;
     duration: number;
   };
-  mock?: boolean;
   input?: {
-    validate_schema?: Record<string, any>;
+    validate_schema?: any;
   };
-  output?: {
-    validate_schema?: Record<string, any>;
-  };
+  input_transform?: string;
+  output_transform?: string;
   // Ajoute d'autres propriétés si besoin
 } 

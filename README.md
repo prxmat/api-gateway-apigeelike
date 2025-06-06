@@ -1,23 +1,40 @@
-# API Gateway Payment
+# API Gateway
 
-Un API Gateway moderne et robuste pour la gestion des paiements, construit avec NestJS.
+## Description
+API Gateway est un service qui gère le routage, la validation, la transformation et le rate limiting des requêtes vers les microservices.
 
 ## Fonctionnalités
+- Routage dynamique basé sur la configuration YAML
+- Validation des requêtes avec JSON Schema
+- Transformation des données avec JSONata
+- Rate limiting par route
+- Mocking des réponses
+- Monitoring des performances avec OpenTelemetry
+- Gestion des erreurs et des timeouts
+- Support des variables d'environnement
 
-- 🔄 Proxy intelligent avec routage dynamique
-- ✅ Validation des requêtes et réponses avec JSON Schema
-- 🔒 Rate limiting configurable
-- 🔄 Transformation des données avec JSONata
-- 🎯 Mocking des réponses pour le développement
-- 📊 Observabilité avec OpenTelemetry
-- 🎨 Interface d'administration
-- 🐳 Support Docker
+## Optimisations et Performances
+Le service est optimisé pour des temps de réponse rapides (environ 200ms) grâce à :
 
-## Prérequis
+### Précompilation
+- Précompilation des schémas de validation avec AJV
+- Précompilation des expressions de transformation avec JSONata
+- Mise en cache des routes au démarrage
 
-- Node.js (v18 ou supérieur)
-- npm ou yarn
-- Docker (optionnel)
+### Caching
+- Cache Redis pour les réponses fréquentes
+- Cache en mémoire pour les routes
+- Cache des schémas de validation
+
+### Optimisations HTTP
+- Connection pooling pour les appels HTTP
+- Timeouts configurables par route
+- Gestion des erreurs de connexion
+
+### Structure des Données
+- Validation des entrées avec JSON Schema
+- Transformation des données avec JSONata
+- Format standardisé des réponses
 
 ## Installation
 
@@ -116,6 +133,12 @@ routes:
       points: 10
       duration: 60
 ```
+
+## Monitoring
+Le service utilise OpenTelemetry pour le monitoring avec :
+- Traces des requêtes
+- Métriques de performance
+- Logs structurés
 
 ## Contribuer
 

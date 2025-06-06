@@ -1,34 +1,33 @@
-import { Controller, Get, Post, Param, Body } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, Patch } from '@nestjs/common';
 import { AdminUiService } from './admin-ui.service';
+import { LoadedRoute } from '../route-loader/interfaces/loaded-route.interface';
 
-@Controller('admin')
+@Controller("admin")
 export class AdminUiController {
   constructor(private readonly adminUiService: AdminUiService) {}
 
-  @Get('api/routes')
-  getRoutes() {
-    // TODO: retourner la liste réelle des routes
-    return [
-      { id: '1', path: '/api/users', method: 'GET', mock: false },
-      { id: '2', path: '/api/orders', method: 'POST', mock: true },
-    ];
+  @Get('routes')
+  getRoutes(): LoadedRoute[] {
+    return this.adminUiService.getRoutes();
   }
 
-  @Post('api/mock/:routeId')
-  setMock(@Param('routeId') routeId: string, @Body() body: { mock: boolean }) {
-    // TODO: activer/désactiver le mock pour la route
-    return { routeId, mock: body.mock, status: 'ok' };
+  @Get('routes/:id')
+  getRoute(@Param('id') id: string): LoadedRoute | undefined {
+    return this.adminUiService.getRoute(id);
   }
 
-  @Post('api/reload')
-  reloadConfig() {
-    // TODO: recharger la config
-    return { status: 'reloaded' };
+  @Patch('routes/:id')
+  updateRoute(@Param('id') id: string, @Body() data: Partial<LoadedRoute>): Promise<LoadedRoute> {
+    return this.adminUiService.updateRoute(id, data);
   }
 
-  @Post('api/test/:routeId')
-  testRoute(@Param('routeId') routeId: string, @Body() body: any) {
-    // TODO: tester la route avec le JSON d'entrée
-    return { routeId, input: body, output: { result: 'mocked output' } };
+  @Post('routes/:id/toggle-mock')
+  toggleMock(@Param('id') id: string): Promise<LoadedRoute> {
+    return this.adminUiService.toggleMock(id);
+  }
+
+  @Post('routes/:id/test')
+  testRoute(@Param('id') id: string, @Body() data: any): Promise<any> {
+    return this.adminUiService.testRoute(id, data);
   }
 } 

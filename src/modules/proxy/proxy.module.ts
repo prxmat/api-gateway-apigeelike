@@ -1,12 +1,23 @@
 import { Module } from '@nestjs/common';
-import { ProxyService } from './proxy.service';
 import { ProxyController } from './proxy.controller';
 import { RouteLoaderModule } from '../route-loader/route-loader.module';
+import { ValidationModule } from '../validation/validation.module';
+import { TransformationModule } from '../transformation/transformation.module';
+import { MockingModule } from '../mocking/mocking.module';
+import { RateLimitModule } from '../rate-limit/rate-limit.module';
+import { MetricsModule } from '../metrics/metrics.module';
+import { HttpModule } from '../http/http.module';
 
 @Module({
-  providers: [ProxyService],
+  imports: [
+    RouteLoaderModule,
+    ValidationModule,
+    TransformationModule,
+    MockingModule,
+    RateLimitModule,
+    MetricsModule,
+    HttpModule,
+  ],
   controllers: [ProxyController],
-  exports: [ProxyService],
-  imports: [RouteLoaderModule],
 })
 export class ProxyModule {} 

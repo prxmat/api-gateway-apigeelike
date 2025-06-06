@@ -1,19 +1,77 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TransformationService } from './transformation.service';
+import { RouteLoaderService } from '../route-loader/route-loader.service';
 
 describe('TransformationService', () => {
   let service: TransformationService;
+  let routeLoader: RouteLoaderService;
+
+  const mockRoute = {
+    id: 'test-route',
+    method: 'POST',
+    path: '/test',
+    backend_url: 'http://backend/test',
+    input: {
+      transform: '{"transformed": $}',
+    },
+    output: {
+      transform: '{"result": $}',
+    },
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [TransformationService],
+      providers: [
+        TransformationService,
+        {
+          provide: RouteLoaderService,
+          useValue: {
+            getRoutes: jest.fn().mockReturnValue([mockRoute]),
+            findRoute: jest.fn().mockReturnValue(mockRoute),
+          },
+        },
+      ],
     }).compile();
 
     service = module.get<TransformationService>(TransformationService);
+    routeLoader = module.get<RouteLoaderService>(RouteLoaderService);
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it('should compile expressions during initialization', async () => {
+    await service.onModuleInit();
+    const compiledExpression = service.getCompiledExpression('test-route');
+    expect(compiledExpression).toBeDefined();
+    expect(compiledExpression?.input).toBeDefined();
+    expect(compiledExpression?.output).toBeDefined();
+  });
+
+  it('should use precompiled expressions for transformation', async () => {
+    await service.onModuleInit();
+    const inputData = { test: 'data' };
+    const result = await service.transform(inputData, mockRoute.input.transform, 'test-route');
+    expect(result).toEqual({ transformed: { test: 'data' } });
+  });
+
+  it('should compile expressions at runtime if not precompiled', async () => {
+    const inputData = { test: 'data' };
+    const template = '{"runtime": $}';
+    const result = await service.transform(inputData, template, 'non-existent-route');
+    expect(result).toEqual({ runtime: { test: 'data' } });
+  });
+
+  it('should handle both input and output transformations', async () => {
+    await service.onModuleInit();
+    const inputData = { test: 'data' };
+    
+    const inputResult = await service.transform(inputData, mockRoute.input.transform, 'test-route');
+    expect(inputResult).toEqual({ transformed: { test: 'data' } });
+
+    const outputResult = await service.transformOutput(inputData, mockRoute.path, mockRoute.method);
+    expect(outputResult).toEqual({ result: { test: 'data' } });
   });
 
   describe('transform', () => {
