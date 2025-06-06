@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import type { Route } from '../types/route';
-import { getRoute, updateRoute, toggleMock, testRoute } from '../services/api';
+import type { Route, Environment, Environments } from '../types/app';
+import { getRoute, updateRoute, toggleMock, testRoute, updateMockResponse, getRoutes } from '../services/api';
 import Editor from '@monaco-editor/react';
 
-export default function RouteDetail() {
-  const { id } = useParams<{ id: string }>();
+type EnvironmentKey = 'integration' | 'staging' | 'production';
+
+const RouteDetail: React.FC = () => {
+  const { appId, routeId } = useParams<{ appId: string; routeId: string }>();
   const navigate = useNavigate();
   const [route, setRoute] = useState<Route | null>(null);
   const [loading, setLoading] = useState(true);
@@ -14,40 +16,75 @@ export default function RouteDetail() {
   const [testData, setTestData] = useState('{}');
   const [testResult, setTestResult] = useState<any>(null);
   const [isTesting, setIsTesting] = useState(false);
+  const [selectedEnvironment, setSelectedEnvironment] = useState<EnvironmentKey>('integration');
+  const [mockResponse, setMockResponse] = useState<string>('');
+  const [testError, setTestError] = useState<string | null>(null);
+  const [testLoading, setTestLoading] = useState(false);
+  const [testBody, setTestBody] = useState<string>('{}');
 
   useEffect(() => {
-    const fetchRoute = async () => {
-      if (!id) return;
-      try {
-        const data = await getRoute(id);
-        setRoute(data);
-        setError(null);
-      } catch (err) {
-        setError('Failed to fetch route details');
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
+    if (appId && routeId) {
+      fetchRoute();
+    }
+  }, [appId, routeId]);
 
-    fetchRoute();
-  }, [id]);
-
-  const handleToggleMock = async () => {
-    if (!id) return;
+  const fetchRoute = async () => {
+    if (!appId || !routeId) return;
+    
     try {
-      const updatedRoute = await toggleMock(id);
-      setRoute(updatedRoute);
+      setLoading(true);
+      const data = await getRoute(appId, routeId);
+      setRoute(data);
+      if (data.environments[selectedEnvironment]?.mock_response) {
+        setMockResponse(JSON.stringify(data.environments[selectedEnvironment].mock_response, null, 2));
+      }
     } catch (err) {
-      setError('Failed to toggle mock mode');
+      setError('Failed to fetch route details');
       console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMockToggle = async (environment: keyof Environments) => {
+    if (!route || !appId || !routeId) return;
+    
+    try {
+      const newMockEnabled = !route.environments[environment]?.mock;
+      await toggleMock(appId, routeId, environment, newMockEnabled);
+      
+      // Mettre à jour l'état local
+      setRoute(prev => {
+        if (!prev) return null;
+        const updatedEnvironments = {
+          ...prev.environments,
+          [environment]: {
+            ...prev.environments[environment],
+            mock: newMockEnabled
+          }
+        };
+        return {
+          ...prev,
+          environments: updatedEnvironments
+        };
+      });
+
+      // Rafraîchir les routes pour avoir les données à jour
+      const updatedRoutes = await getRoutes(appId);
+      const updatedRoute = updatedRoutes.find(r => r.id === routeId);
+      if (updatedRoute) {
+        setRoute(updatedRoute);
+      }
+    } catch (error) {
+      console.error('Error toggling mock:', error);
+      // Afficher une notification d'erreur si nécessaire
     }
   };
 
   const handleSave = async () => {
-    if (!id || !route) return;
+    if (!appId || !routeId || !route) return;
     try {
-      const updatedRoute = await updateRoute(id, route);
+      const updatedRoute = await updateRoute(appId, routeId, route);
       setRoute(updatedRoute);
       setIsEditing(false);
     } catch (err) {
@@ -56,18 +93,41 @@ export default function RouteDetail() {
     }
   };
 
-  const handleTest = async () => {
-    if (!id) return;
-    setIsTesting(true);
+  const handleTestRoute = async () => {
+    if (!appId || !routeId) return;
     try {
-      const data = JSON.parse(testData);
-      const result = await testRoute(id, data);
+      setTestLoading(true);
+      setTestError(null);
+      const body = JSON.parse(testBody);
+      const result = await testRoute(appId, routeId, body, selectedEnvironment);
       setTestResult(result);
-    } catch (err) {
-      setError('Failed to test route');
-      console.error(err);
+    } catch (error) {
+      setTestError(error instanceof Error ? error.message : 'Failed to test route');
+      console.error('Error testing route:', error);
     } finally {
-      setIsTesting(false);
+      setTestLoading(false);
+    }
+  };
+
+  const handleUpdateMockResponse = async () => {
+    if (!route || !appId || !routeId) return;
+
+    try {
+      const parsedMockResponse = JSON.parse(mockResponse);
+      await updateMockResponse(appId, routeId, selectedEnvironment, parsedMockResponse);
+      await fetchRoute();
+    } catch (err) {
+      setError('Failed to update mock response');
+      console.error(err);
+    }
+  };
+
+  const handleEnvironmentChange = (env: EnvironmentKey) => {
+    setSelectedEnvironment(env);
+    if (route?.environments[env]?.mock_response) {
+      setMockResponse(JSON.stringify(route.environments[env].mock_response, null, 2));
+    } else {
+      setMockResponse('');
     }
   };
 
@@ -96,189 +156,222 @@ export default function RouteDetail() {
     );
   }
 
+  const currentEnv = route.environments[selectedEnvironment] as Environment;
+
   return (
-    <div className="space-y-6">
-      <div className="sm:flex sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">
-            {route.path}
-          </h2>
-          <p className="mt-1 text-sm text-gray-500">
-            {route.method} - {route.backend_url}
-          </p>
-        </div>
-        <div className="mt-4 sm:mt-0 space-x-3">
+    <div className="container mx-auto px-4 py-8">
+      <div className="bg-white shadow rounded-lg p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold">
+            {route.method} {route.path}
+          </h1>
           <button
-            type="button"
-            onClick={() => setIsEditing(!isEditing)}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            onClick={() => navigate(-1)}
+            className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
           >
-            {isEditing ? 'Cancel' : 'Edit'}
-          </button>
-          {isEditing && (
-            <button
-              type="button"
-              onClick={handleSave}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-            >
-              Save
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={handleToggleMock}
-            className={`inline-flex items-center px-4 py-2 border rounded-md shadow-sm text-sm font-medium ${
-              route.mock
-                ? 'border-yellow-300 text-yellow-700 bg-yellow-50 hover:bg-yellow-100'
-                : 'border-green-300 text-green-700 bg-green-50 hover:bg-green-100'
-            } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500`}
-          >
-            {route.mock ? 'Disable Mock' : 'Enable Mock'}
+            Back to Dashboard
           </button>
         </div>
-      </div>
 
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="space-y-6">
-            <div>
-              <label htmlFor="path" className="block text-sm font-medium text-gray-700">
-                Path
-              </label>
-              <input
-                type="text"
-                id="path"
-                value={route.path}
-                onChange={(e) => setRoute({ ...route, path: e.target.value })}
-                disabled={!isEditing}
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-100"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="method" className="block text-sm font-medium text-gray-700">
-                Method
-              </label>
-              <select
-                id="method"
-                value={route.method}
-                onChange={(e) => setRoute({ ...route, method: e.target.value })}
-                disabled={!isEditing}
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-100"
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Environment</label>
+          <div className="flex space-x-2">
+            {(Object.keys(route.environments) as EnvironmentKey[]).map((env) => (
+              <button
+                key={env}
+                onClick={() => handleEnvironmentChange(env)}
+                className={`px-4 py-2 rounded ${
+                  selectedEnvironment === env
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
               >
-                <option value="GET">GET</option>
-                <option value="POST">POST</option>
-                <option value="PUT">PUT</option>
-                <option value="DELETE">DELETE</option>
-              </select>
-            </div>
+                {env}
+              </button>
+            ))}
+          </div>
+        </div>
 
-            <div>
-              <label htmlFor="backend_url" className="block text-sm font-medium text-gray-700">
-                Backend URL
-              </label>
-              <input
-                type="text"
-                id="backend_url"
-                value={route.backend_url}
-                onChange={(e) => setRoute({ ...route, backend_url: e.target.value })}
-                disabled={!isEditing}
-                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm disabled:bg-gray-100"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="input_transform" className="block text-sm font-medium text-gray-700">
-                Input Transform
-              </label>
-              <Editor
-                height="200px"
-                defaultLanguage="javascript"
-                value={route.input_transform || ''}
-                onChange={(value) => setRoute({ ...route, input_transform: value || '' })}
-                options={{
-                  minimap: { enabled: false },
-                  readOnly: !isEditing,
-                }}
-              />
-            </div>
-
-            <div>
-              <label htmlFor="output_transform" className="block text-sm font-medium text-gray-700">
-                Output Transform
-              </label>
-              <Editor
-                height="200px"
-                defaultLanguage="javascript"
-                value={route.output_transform || ''}
-                onChange={(value) => setRoute({ ...route, output_transform: value || '' })}
-                options={{
-                  minimap: { enabled: false },
-                  readOnly: !isEditing,
-                }}
-              />
-            </div>
-
-            {route.mock && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <h2 className="text-xl font-semibold mb-4">Environment Configuration</h2>
+            <div className="space-y-4">
               <div>
-                <label htmlFor="mock_response" className="block text-sm font-medium text-gray-700">
-                  Mock Response
-                </label>
-                <Editor
-                  height="200px"
-                  defaultLanguage="json"
-                  value={route.mock_response ? JSON.stringify(route.mock_response, null, 2) : '{}'}
-                  onChange={(value) => {
-                    try {
-                      const parsed = value ? JSON.parse(value) : {};
-                      setRoute({ ...route, mock_response: parsed });
-                    } catch (e) {
-                      // Ignorer les erreurs de parsing JSON pendant la saisie
-                    }
+                <label className="block text-sm font-medium text-gray-700">Backend URL</label>
+                <input
+                  type="text"
+                  value={currentEnv.backend_url}
+                  onChange={(e) => {
+                    const updatedRoute = {
+                      ...route,
+                      environments: {
+                        ...route.environments,
+                        [selectedEnvironment]: {
+                          ...currentEnv,
+                          backend_url: e.target.value
+                        }
+                      }
+                    };
+                    setRoute(updatedRoute);
                   }}
-                  options={{
-                    minimap: { enabled: false },
-                    readOnly: !isEditing,
-                  }}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 />
               </div>
-            )}
 
+              <div className="flex items-center space-x-4">
+                <label className="block text-sm font-medium text-gray-700">Mock Response</label>
+                <button
+                  onClick={() => handleMockToggle(selectedEnvironment as keyof Environments)}
+                  className={`px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors duration-200 ${
+                    currentEnv.mock
+                      ? 'bg-green-500 hover:bg-green-600'
+                      : 'bg-gray-500 hover:bg-gray-600'
+                  } text-white text-sm font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed`}
+                  title={currentEnv.mock ? 'Click to disable mock' : 'Click to enable mock'}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <>
+                      <span>{currentEnv.mock ? 'Mock Enabled' : 'Mock Disabled'}</span>
+                      <div className={`w-3 h-3 rounded-full ${currentEnv.mock ? 'bg-white' : 'bg-gray-300'} transition-colors duration-200`}></div>
+                    </>
+                  )}
+                </button>
+                {currentEnv.mock && !loading && (
+                  <span className="text-sm text-gray-500">
+                    Using mock response for {selectedEnvironment}
+                  </span>
+                )}
+                {error && !loading && (
+                  <span className="text-sm text-red-500">
+                    {error}
+                  </span>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Input Transform</label>
+                <textarea
+                  value={route.input_transform || ''}
+                  onChange={(e) => {
+                    setRoute({
+                      ...route,
+                      input_transform: e.target.value
+                    });
+                  }}
+                  rows={4}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Output Transform</label>
+                <textarea
+                  value={route.output_transform || ''}
+                  onChange={(e) => {
+                    setRoute({
+                      ...route,
+                      output_transform: e.target.value
+                    });
+                  }}
+                  rows={4}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h2 className="text-xl font-semibold mb-4">Mock Response</h2>
+            <div className="space-y-4">
+              <textarea
+                value={mockResponse}
+                onChange={(e) => setMockResponse(e.target.value)}
+                rows={10}
+                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 font-mono"
+                placeholder="Enter mock response JSON..."
+              />
+              <button
+                onClick={handleUpdateMockResponse}
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              >
+                Update Mock Response
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold mb-4">Test Route</h2>
+          <div className="space-y-4">
             <div>
-              <label htmlFor="test_data" className="block text-sm font-medium text-gray-700">
-                Test Data
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Request Body</label>
               <Editor
                 height="200px"
                 defaultLanguage="json"
-                value={testData}
-                onChange={(value) => setTestData(value || '{}')}
+                value={testBody}
+                onChange={(value: string | undefined) => {
+                  if (typeof value === 'string') {
+                    setTestBody(value);
+                  } else {
+                    setTestBody('{}');
+                  }
+                }}
                 options={{
                   minimap: { enabled: false },
+                  fontSize: 14,
+                  lineNumbers: 'on',
+                  roundedSelection: false,
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
                 }}
               />
-              <div className="mt-2">
-                <button
-                  type="button"
-                  onClick={handleTest}
-                  disabled={isTesting}
-                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-400"
-                >
-                  {isTesting ? 'Testing...' : 'Test Route'}
-                </button>
+            </div>
+
+            <button
+              onClick={handleTestRoute}
+              disabled={testLoading}
+              className={`px-4 py-2 rounded ${
+                testLoading
+                  ? 'bg-gray-400 cursor-not-allowed'
+                  : 'bg-green-500 hover:bg-green-600'
+              } text-white`}
+            >
+              {testLoading ? 'Testing...' : 'Test Route'}
+            </button>
+
+            {testError && (
+              <div className="bg-red-50 p-4 rounded-md">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-red-800">{testError}</h3>
+                  </div>
+                </div>
               </div>
-              {testResult && (
-                <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700">Test Result</label>
-                  <pre className="mt-1 p-4 bg-gray-50 rounded-md overflow-auto">
+            )}
+
+            {testResult && (
+              <div className="mt-4">
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Test Result</h3>
+                <div className="bg-gray-50 p-4 rounded-md">
+                  <pre className="text-sm text-gray-800 overflow-auto">
                     {JSON.stringify(testResult, null, 2)}
                   </pre>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
-} 
+};
+
+export default RouteDetail; 

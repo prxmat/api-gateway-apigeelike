@@ -1,54 +1,52 @@
-import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import type { Route } from '../types/route';
+import React, { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import type { Route, Environments } from '../types/app';
 import { getRoute, testRoute } from '../services/api';
 import Editor from '@monaco-editor/react';
 
-export default function TestRoute() {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+const TestRoute: React.FC = () => {
+  const { appId, routeId } = useParams<{ appId: string; routeId: string }>();
   const [route, setRoute] = useState<Route | null>(null);
+  const [testData, setTestData] = useState('{}');
+  const [testResult, setTestResult] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [requestData, setRequestData] = useState({});
-  const [response, setResponse] = useState<any>(null);
-  const [testing, setTesting] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [selectedEnvironment, setSelectedEnvironment] = useState<keyof Environments>('integration');
 
   useEffect(() => {
-    const fetchRoute = async () => {
-      if (!id) return;
-      try {
-        const data = await getRoute(id);
-        setRoute(data);
-        setError(null);
-      } catch (err) {
-        setError('Failed to fetch route details');
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchRoute();
-  }, [id]);
+  }, [appId, routeId]);
+
+  const fetchRoute = async () => {
+    try {
+      setLoading(true);
+      if (!appId || !routeId) {
+        throw new Error('Missing appId or routeId');
+      }
+      const data = await getRoute(appId, routeId);
+      setRoute(data);
+      setError(null);
+    } catch (error) {
+      console.error('Error fetching route:', error);
+      setError('Failed to load route details');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleTest = async () => {
-    if (!id) return;
-    setTesting(true);
+    if (!appId || !routeId) return;
+    setIsTesting(true);
     try {
-      const data = JSON.parse(requestData);
-      const result = await testRoute(id, data);
-      setResponse(result);
-      setError(null);
+      const data = JSON.parse(testData);
+      const result = await testRoute(appId, routeId, data, selectedEnvironment);
+      setTestResult(result);
     } catch (err) {
-      if (err instanceof SyntaxError) {
-        setError('Invalid JSON in request data');
-      } else {
-        setError('Failed to test route');
-        console.error(err);
-      }
+      console.error('Error testing route:', err);
+      setError('Failed to test route');
     } finally {
-      setTesting(false);
+      setIsTesting(false);
     }
   };
 
@@ -78,75 +76,75 @@ export default function TestRoute() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="sm:flex sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">
-            Test Route
-          </h2>
-          <p className="mt-1 text-sm text-gray-500">
-            {route.method} {route.path}
+    <div className="container mx-auto px-4 py-8">
+      <div className="bg-white shadow rounded-lg p-6">
+        <h1 className="text-2xl font-bold mb-4">Test Route: {route.id}</h1>
+        <div className="mb-4">
+          <p className="text-gray-600">
+            <span className="font-semibold">Method:</span> {route.method}
+          </p>
+          <p className="text-gray-600">
+            <span className="font-semibold">Path:</span> {route.path}
           </p>
         </div>
-        <div className="mt-4 sm:mt-0">
-          <button
-            type="button"
-            onClick={() => navigate(`/routes/${id}`)}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-          >
-            Back to Route
-          </button>
-        </div>
-      </div>
 
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="space-y-6">
-            <div>
-              <label htmlFor="request" className="block text-sm font-medium text-gray-700">
-                Request Data
-              </label>
-              <Editor
-                height="200px"
-                defaultLanguage="json"
-                value={requestData}
-                onChange={(value) => setRequestData(value || '{}')}
-                options={{
-                  minimap: { enabled: false },
-                }}
-              />
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={handleTest}
-                disabled={testing}
-                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-              >
-                {testing ? 'Testing...' : 'Test Route'}
-              </button>
-            </div>
-
-            {response && (
-              <div>
-                <label htmlFor="response" className="block text-sm font-medium text-gray-700">
-                  Response
-                </label>
-                <Editor
-                  height="200px"
-                  defaultLanguage="json"
-                  value={JSON.stringify(response, null, 2)}
-                  options={{
-                    minimap: { enabled: false },
-                    readOnly: true,
-                  }}
-                />
-              </div>
-            )}
+        <div className="space-y-6">
+          <div>
+            <label htmlFor="environment" className="block text-sm font-medium text-gray-700 mb-2">
+              Environment
+            </label>
+            <select
+              id="environment"
+              value={selectedEnvironment}
+              onChange={(e) => setSelectedEnvironment(e.target.value as keyof Environments)}
+              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+            >
+              {(Object.keys(route.environments) as Array<keyof Environments>).map((env) => (
+                <option key={env} value={env}>
+                  {env} {route.environments[env].mock ? '(Mock)' : ''}
+                </option>
+              ))}
+            </select>
           </div>
+
+          <div>
+            <label htmlFor="test_data" className="block text-sm font-medium text-gray-700">
+              Test Data
+            </label>
+            <Editor
+              height="200px"
+              defaultLanguage="json"
+              value={testData}
+              onChange={(value) => setTestData(value || '{}')}
+              options={{
+                minimap: { enabled: false },
+              }}
+            />
+          </div>
+
+          <div>
+            <button
+              type="button"
+              onClick={handleTest}
+              disabled={isTesting}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              {isTesting ? 'Testing...' : 'Test Route'}
+            </button>
+          </div>
+
+          {testResult && (
+            <div>
+              <h2 className="text-lg font-medium mb-2">Test Result</h2>
+              <pre className="bg-gray-100 p-4 rounded overflow-x-auto">
+                {JSON.stringify(testResult, null, 2)}
+              </pre>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
-} 
+};
+
+export default TestRoute; 

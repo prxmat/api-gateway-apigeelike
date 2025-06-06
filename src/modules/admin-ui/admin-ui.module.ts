@@ -8,6 +8,7 @@ import { HttpModule } from '../http/http.module';
 import { ValidationModule } from '../validation/validation.module';
 import { TransformationModule } from '../transformation/transformation.module';
 import { MockingModule } from '../mocking/mocking.module';
+import { ProxyModule } from '../proxy/proxy.module';
 
 @Module({
   imports: [
@@ -16,9 +17,11 @@ import { MockingModule } from '../mocking/mocking.module';
     ValidationModule,
     TransformationModule,
     MockingModule,
+    ProxyModule,
     ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '../../../admin-ui/dist'),
+      rootPath: join(__dirname, 'public'),
       serveRoot: '/admin',
+      exclude: ['/api*'],
     }),
   ],
   controllers: [AdminUiController],

@@ -1,33 +1,72 @@
-import { Controller, Get, Post, Param, Body, Patch } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Headers, Query, NotFoundException } from '@nestjs/common';
 import { AdminUiService } from './admin-ui.service';
 import { LoadedRoute } from '../route-loader/interfaces/loaded-route.interface';
+import { App } from '../route-loader/interfaces/app.interface';
 
-@Controller("admin")
+@Controller('admin')
 export class AdminUiController {
-  constructor(private readonly adminUiService: AdminUiService) {}
+  constructor(
+    private readonly adminUiService: AdminUiService
+  ) {}
 
-  @Get('routes')
-  getRoutes(): LoadedRoute[] {
-    return this.adminUiService.getRoutes();
+  @Get('apps')
+  getApps(): App[] {
+    return this.adminUiService.getApps();
   }
 
-  @Get('routes/:id')
-  getRoute(@Param('id') id: string): LoadedRoute | undefined {
-    return this.adminUiService.getRoute(id);
+  @Get('apps/:id')
+  getApp(@Param('id') id: string): App | undefined {
+    return this.adminUiService.getApp(id);
   }
 
-  @Patch('routes/:id')
-  updateRoute(@Param('id') id: string, @Body() data: Partial<LoadedRoute>): Promise<LoadedRoute> {
-    return this.adminUiService.updateRoute(id, data);
+  @Get('apps/:appId/routes')
+  getRoutes(@Param('appId') appId: string): LoadedRoute[] {
+    return this.adminUiService.getRoutes(appId);
   }
 
-  @Post('routes/:id/toggle-mock')
-  toggleMock(@Param('id') id: string): Promise<LoadedRoute> {
-    return this.adminUiService.toggleMock(id);
+  @Get('apps/:appId/routes/:routeId')
+  getRoute(
+    @Param('appId') appId: string,
+    @Param('routeId') routeId: string
+  ): LoadedRoute | undefined {
+    return this.adminUiService.getRoute(appId, routeId);
   }
 
-  @Post('routes/:id/test')
-  testRoute(@Param('id') id: string, @Body() data: any): Promise<any> {
-    return this.adminUiService.testRoute(id, data);
+  @Put('apps/:appId/routes/:routeId')
+  async updateRoute(
+    @Param('appId') appId: string,
+    @Param('routeId') routeId: string,
+    @Body() updatedRoute: LoadedRoute
+  ): Promise<void> {
+    await this.adminUiService.updateRoute(appId, routeId, updatedRoute);
+  }
+
+  @Post('apps/:appId/routes/:routeId/environments/:environment/mock')
+  async toggleMock(
+    @Param('appId') appId: string,
+    @Param('routeId') routeId: string,
+    @Param('environment') environment: string,
+    @Body('mock') mock: boolean
+  ): Promise<void> {
+    await this.adminUiService.toggleMock(appId, routeId, environment, mock);
+  }
+
+  @Post('apps/:appId/routes/:routeId/test')
+  async testRoute(
+    @Param('appId') appId: string,
+    @Param('routeId') routeId: string,
+    @Body() data: any,
+    @Headers('x-environment') environment: string
+  ): Promise<any> {
+    return this.adminUiService.testRoute(appId, routeId, data, environment);
+  }
+
+  @Put('apps/:appId/environments/:environment/mock')
+  async updateEnvironmentMock(
+    @Param('appId') appId: string,
+    @Param('environment') environment: string,
+    @Body('enabled') enabled: boolean,
+  ): Promise<void> {
+    await this.adminUiService.updateEnvironmentMock(appId, environment, enabled);
   }
 } 

@@ -10,11 +10,17 @@ import { LoggerModule } from './modules/logger/logger.module';
 import { ProxyModule } from './modules/proxy/proxy.module';
 import { HttpModule } from './modules/http/http.module';
 import { AdminUiModule } from './modules/admin-ui/admin-ui.module';
+import * as path from 'path';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      load: [
+        () => ({
+          ROUTES_PATH: path.join(process.cwd(), 'config', 'routes.yaml'),
+        }),
+      ],
     }),
     RouteLoaderModule,
     ValidationModule,

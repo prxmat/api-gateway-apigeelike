@@ -11,8 +11,8 @@ function App() {
       <Layout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/routes/:id" element={<RouteDetail />} />
-          <Route path="/routes/:id/test" element={<TestRoute />} />
+          <Route path="/apps/:appId/routes/:routeId" element={<RouteDetail />} />
+          <Route path="/apps/:appId/routes/:routeId/test" element={<TestRoute />} />
           <Route path="/import" element={<ImportOpenAPI />} />
         </Routes>
       </Layout>

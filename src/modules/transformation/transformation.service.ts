@@ -74,6 +74,12 @@ export class TransformationService implements OnModuleInit {
       return data;
     }
 
+    console.log('TransformOutput input:', {
+      data,
+      expression,
+      routeId
+    });
+
     let compiledExpression: jsonata.Expression;
     if (this.compiledExpressions.has(routeId)) {
       compiledExpression = this.compiledExpressions.get(routeId)!.output!;
@@ -81,7 +87,14 @@ export class TransformationService implements OnModuleInit {
       compiledExpression = jsonata(expression);
     }
 
-    return compiledExpression.evaluate(data);
+    try {
+      const result = await compiledExpression.evaluate(data);
+      console.log('TransformOutput result:', result);
+      return result || data;
+    } catch (error) {
+      console.error('TransformOutput error:', error);
+      return data;
+    }
   }
 
   getCompiledExpression(routeId: string): CompiledExpressions | undefined {

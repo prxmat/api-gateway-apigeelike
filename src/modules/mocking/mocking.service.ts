@@ -45,41 +45,44 @@ export class MockingService implements OnModuleInit {
     const routes = this.routeLoader.getRoutes();
     
     for (const route of routes) {
-      if (!route.mock || !route.mock_response) {
-        continue;
-      }
-
-      let mockResponse: any;
-
-      // Si c'est un objet inline
-      if (typeof route.mock_response === 'object') {
-        console.log('Transforming mock response for route:', route.id, route.mock_response);
-        mockResponse = this.transformResponse(route.mock_response);
-        console.log('Transformed mock response:', mockResponse);
-      }
-      // Si c'est un chemin de fichier
-      else if (typeof route.mock_response === 'string') {
-        const filePath = path.isAbsolute(route.mock_response)
-          ? route.mock_response
-          : path.join(process.cwd(), route.mock_response);
-
-        if (!fs.existsSync(filePath)) {
-          console.warn(`Mock file not found: ${filePath}`);
+      // Parcourir tous les environnements
+      for (const [env, config] of Object.entries(route.environments)) {
+        if (!config.mock || !config.mock_response) {
           continue;
         }
 
-        try {
-          const content = fs.readFileSync(filePath, 'utf-8');
-          const parsed = JSON.parse(content);
-          mockResponse = this.transformResponse(parsed);
-        } catch (error) {
-          console.error(`Error loading mock file ${filePath}:`, error);
-          continue;
-        }
-      }
+        let mockResponse: any;
 
-      if (mockResponse) {
-        this.mockResponses.set(route.id, mockResponse);
+        // Si c'est un objet inline
+        if (typeof config.mock_response === 'object') {
+          console.log(`Transforming mock response for route: ${route.id} in environment: ${env}`, config.mock_response);
+          mockResponse = this.transformResponse(config.mock_response);
+          console.log('Transformed mock response:', mockResponse);
+        }
+        // Si c'est un chemin de fichier
+        else if (typeof config.mock_response === 'string') {
+          const filePath = path.isAbsolute(config.mock_response)
+            ? config.mock_response
+            : path.join(process.cwd(), config.mock_response);
+
+          if (!fs.existsSync(filePath)) {
+            console.warn(`Mock file not found: ${filePath}`);
+            continue;
+          }
+
+          try {
+            const content = fs.readFileSync(filePath, 'utf-8');
+            const parsed = JSON.parse(content);
+            mockResponse = this.transformResponse(parsed);
+          } catch (error) {
+            console.error(`Error loading mock file ${filePath}:`, error);
+            continue;
+          }
+        }
+
+        if (mockResponse) {
+          this.mockResponses.set(`${route.id}:${env}`, mockResponse);
+        }
       }
     }
   }
@@ -111,18 +114,19 @@ export class MockingService implements OnModuleInit {
     return this.transformValue(response);
   }
 
-  async getMockResponse(route: any): Promise<any | undefined> {
-    if (!route.mock) {
-      console.log('Mock is disabled for route:', route.id);
+  async getMockResponse(route: any, environment: string = 'integration'): Promise<any | undefined> {
+    const envConfig = route.environments[environment];
+    if (!envConfig || !envConfig.mock) {
+      console.log(`Mock is disabled for route: ${route.id} in environment: ${environment}`);
       return undefined;
     }
-    const response = this.mockResponses.get(route.id);
-    console.log('Getting mock response for route:', route.id, response);
+    const response = this.mockResponses.get(`${route.id}:${environment}`);
+    console.log(`Getting mock response for route: ${route.id} in environment: ${environment}`, response);
     return response;
   }
 
   // Méthode utilitaire pour les tests
-  getMockResponseFromCache(routeId: string): any | undefined {
-    return this.mockResponses.get(routeId);
+  getMockResponseFromCache(routeId: string, environment: string = 'integration'): any | undefined {
+    return this.mockResponses.get(`${routeId}:${environment}`);
   }
 } 
